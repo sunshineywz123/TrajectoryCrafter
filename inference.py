@@ -3,15 +3,25 @@ import os
 from datetime import datetime
 import argparse
 import torch
-
+import ptvsd
 
 def get_parser():
+    """
+    创建并返回一个解析命令行参数的 ArgumentParser 对象。
+
+    Args:
+        无
+
+    Returns:
+        argparse.ArgumentParser: 包含所有命令行参数的 ArgumentParser 对象。
+
+    """
     parser = argparse.ArgumentParser()
 
     ## general
     parser.add_argument('--video_path', type=str, help='Input path')
     parser.add_argument(
-        '--out_dir', type=str, default='./experiments/', help='Output dir'
+        '--out_dir', type=str, default='./experiments1/', help='Output dir'
     )
     parser.add_argument(
         '--device', type=str, default='cuda:0', help='The device to use'
@@ -175,11 +185,18 @@ def get_parser():
 if __name__ == "__main__":
     parser = get_parser()  # infer config.py
     opts = parser.parse_args()
+    
+            
+    # ptvsd.enable_attach(address=('0.0.0.0', 5691))
+    
     opts.weight_dtype = torch.bfloat16
     if opts.exp_name == None:
         prefix = datetime.now().strftime("%Y%m%d_%H%M")
+        # opts.exp_name = (
+        #     f'{prefix}_{os.path.splitext(os.path.basename(opts.video_path))[0]}'
+        # )
         opts.exp_name = (
-            f'{prefix}_{os.path.splitext(os.path.basename(opts.video_path))[0]}'
+            f'{os.path.splitext(os.path.basename(opts.video_path))[0]}'
         )
     opts.save_dir = os.path.join(opts.out_dir, opts.exp_name)
     os.makedirs(opts.save_dir, exist_ok=True)
