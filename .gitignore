@@ -4,3 +4,10 @@ __pycache__
 experiment
 experiment/*
 experiments/*
+
+.auto-coder/
+/actions/
+/output.txt
+*.ply
+.vscode/
+experiment1/
