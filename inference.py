@@ -1,4 +1,5 @@
 from demo import TrajCrafter
+# from demo_origin import TrajCrafter
 import os
 from datetime import datetime
 import argparse
@@ -187,7 +188,7 @@ if __name__ == "__main__":
     opts = parser.parse_args()
     
             
-    # ptvsd.enable_attach(address=('0.0.0.0', 5691))
+    ptvsd.enable_attach(address=('0.0.0.0', 5691))
     
     opts.weight_dtype = torch.bfloat16
     if opts.exp_name == None:

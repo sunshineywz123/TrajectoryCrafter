@@ -21,3 +21,4 @@ python -m ptvsd --host 127.0.0.1 --port 5691 inference.py \
     --mask \
     --target_pose 0 0 0 0 0 \
     --traj_txt 'test/trajs/loop2.txt' \
+    --video_length 65

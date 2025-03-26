@@ -21,7 +21,12 @@ from diffusers import (
     PNDMScheduler,
 )
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
-
+from scipy.spatial.transform import Rotation as R
+# 四元数格式 [x,y,z,w]
+# quat = [0.707, 0, 0.707, 0]
+def quat_to_matrix(quat):
+    rotation_matrix = R.from_quat(quat).as_matrix()  # 生成3x3旋转矩阵
+    return rotation_matrix
 
 class TrajCrafter:
     def __init__(self, opts, gradio=False):
@@ -71,8 +76,55 @@ class TrajCrafter:
         # 断言帧的数量与视频长度一致
         assert frames.shape[0] == opts.video_length
 
+        num_frames = opts.video_length
         # 获取相机姿态和投影矩阵
-        pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=opts.video_length)
+        pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
+
+        #pose_s 读取原始source video的camera pose
+        #pose_t 读取原始target video的camera pose
+        # 生成source相机姿态和锚点目标相机姿态
+        path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
+        intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
+        poses = np.loadtxt(path + 'pred_traj.txt')
+#         #In [3]: K[0]
+# Out[3]: 
+# tensor([[[500.,   0., 512.],
+#          [  0., 500., 288.],
+#          [  0.,   0.,   1.]],
+# K.shape
+# Out[4]: torch.Size([49, 3, 3])
+# intrinsic.shape
+# Out[6]: (65, 9)
+# In [8]: intrinsic[0]
+# Out[8]: 
+# array([447.848938,   0.      , 256.      ,   0.      , 447.848938,
+#        144.      ,   0.      ,   0.      ,   1.      ])
+        K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
+# In [1]: pose_s.shape
+# Out[1]: torch.Size([49, 4, 4])
+
+# In [2]: pose_t.shape
+# Out[2]: torch.Size([49, 4, 4])
+# In [7]: poses.shape
+# Out[7]: (65, 8)
+# poses[0]
+# Out[24]: 
+# array([ 0.00000000e+00,  4.72544161e-05,  2.78613321e-03, -1.09835267e-02,
+#         9.99909862e-01, -1.10597335e-02,  7.11655142e-04, -7.57922437e-03])
+# 将四元数转换为旋转矩阵
+#poses是四元数，poses[0][0]为idx，poses[0][1:]为四元数，poses[0][1:4]是R四元数,poses[0][4:]是t,需要转换为旋转矩阵
+        R_matrix = quat_to_matrix(poses[:num_frames, 1:5])
+        t = poses[:num_frames, 5:]
+#         #In [47]: torch.from_numpy(R_matrix).float().shape
+# Out[47]: torch.Size([49, 3, 3])
+
+# In [48]: torch.from_numpy(t).float().shape
+# Out[48]: torch.Size([49, 3])
+        scale = 100
+        pose_s = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
+        pose_s[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
+        pose_s[:, :3, 3] = scale*torch.from_numpy(t).float()
+        pose_t = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
 
         # 初始化用于存储扭曲图像和掩码的列表
         warped_images = []
@@ -89,7 +141,7 @@ class TrajCrafter:
                 K[i : i + 1],
                 None,
                 opts.mask,
-                twice=True,
+                twice=False,
             )
             warped_images.append(warped_frame2)
             masks.append(mask2)
