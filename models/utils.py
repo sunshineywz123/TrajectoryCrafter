@@ -25,9 +25,10 @@ import skimage.io
 import torch
 import torch.nn.functional as F
 from decord import VideoReader, cpu
-
 import open3d as o3d
-def tensor_to_point_cloud(tensor, filename="point_cloud.ply"):
+idx=0
+
+def tensor_to_point_cloud(tensor,colors=None, filename="point_cloud.ply"):
     """
     将 PyTorch 张量转换为 Open3D 点云并保存为 PLY 文件。
 
@@ -47,10 +48,13 @@ def tensor_to_point_cloud(tensor, filename="point_cloud.ply"):
     # 4. 创建 Open3D 点云对象
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
+    if colors is not None:
+        pcd.colors = o3d.utility.Vector3dVector(colors)
 
     # 5. 保存点云到 PLY 文件
     o3d.io.write_point_cloud(filename, pcd)
     print(f"点云已保存到 {filename}")
+    return pcd
 
 def read_video_frames(video_path, process_length, stride, max_res, dataset="open"):
     if dataset == "open":
@@ -288,9 +292,21 @@ class Warper:
 
         # 计算变换后的3D点坐标
         trans_points1 = self.compute_transformed_points(
-            depth1, transformation1, transformation2, intrinsic1, intrinsic2
-        )
-        # tensor_to_point_cloud(trans_points1)
+            depth1, transformation1, transformation2, intrinsic1, intrinsic2,frame=(frame1+1)/2
+        ) # (b, h, w, 3, 1)
+        global idx
+        pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/unstable_04/scene_pointcloud_{}.ply'.format(idx))
+        pcd_points = np.asarray(pcd.points)
+        trans_points1 = torch.matmul(intrinsic2,torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1))
+        #rgb 是frame1
+        #trans_points1 是frame1的3D点坐标
+        #生成带颜色的点云
+        
+        colors = (frame1+1)/2
+        # colors.shape (b,3,h,w)
+        # pcd =tensor_to_point_cloud(torch.matmul(torch.linalg.inv(intrinsic2),trans_points1),colors=colors.permute(0,2,3,1).reshape(b*h*w,3),filename='tmp3/pcd_color_{:04d}.ply'.format(idx))
+        idx+=1
+
         # import ipdb; ipdb.set_trace()
         # 将3D点投影到2D平面,进行透视除法
         trans_coordinates = (
@@ -352,6 +368,7 @@ class Warper:
         transformation2: torch.Tensor,
         intrinsic1: torch.Tensor,
         intrinsic2: Optional[torch.Tensor],
+        frame: Optional[torch.Tensor] = None,
     ):
         """
         Computes transformed position for each pixel location
@@ -404,13 +421,21 @@ class Warper:
             intrinsic1_inv_4d, pos_vectors_homo
         )  # (b, h, w, 3, 1)
         # 计算世界坐标系中的点
+        #world_points的含义camera 0的坐标系下的坐标
         world_points = depth_4d * unnormalized_pos  # (b, h, w, 3, 1)
+        global idx
+        # tensor_to_point_cloud(world_points.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/world_points_{:04d}.ply'.format(idx))
+        # idx+=1
         # 转换为齐次坐标
         world_points_homo = torch.cat([world_points, ones_4d], dim=3)  # (b, h, w, 4, 1)
         # 应用变换矩阵
         trans_world_homo = torch.matmul(trans_4d, world_points_homo)  # (b, h, w, 4, 1)
         # 提取变换后的3D坐标
+        #trans_world的含义camera 1的坐标系下的坐标
         trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
+        # global idx
+        # tensor_to_point_cloud(trans_world.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/trans_world_points_{:04d}.ply'.format(idx))
+        # idx+=1
         # 计算变换后的归一化坐标
         trans_norm_points = torch.matmul(intrinsic2_4d, trans_world)  # (b, h, w, 3, 1)
         return trans_norm_points
