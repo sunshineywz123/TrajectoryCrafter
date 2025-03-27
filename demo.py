@@ -48,28 +48,46 @@ class TrajCrafter:
 
     def infer_gradual(self, opts):
         # 读取视频帧
-        frames = read_video_frames(
-            opts.video_path, opts.video_length, opts.stride, opts.max_res
-        )
+        # frames = read_video_frames(
+        #     opts.video_path, opts.video_length, opts.stride, opts.max_res
+        # )
+        # 读取视频帧
+        #frames shape:(65, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -1.0, mean: -0.064824
+        #depths shape:(65, 1, 576, 1024) type:(float32 of torch.Tensor) max: 10000.0, min: 2.5641, mean: 22.025
+        path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
+        #遍历path下的所有图片，转换为tensor
+        frames = []
+        depths = []
+        for i in range(opts.video_length):
+            frames.append(Image.open(path + 'frame_{:04d}.png'.format(i)))
+            depths.append(np.load(path + 'frame_{:04d}.npy'.format(i)))
+        frames = np.array(frames)
+        frames = frames.transpose(0, 3, 1, 2)
+        frames = frames.astype(np.float32) / 255.0
+        # frames = frames.reshape(opts.video_length, 3, 384, 672)
+        frames = torch.from_numpy(frames)
+        frames = frames.to(opts.device) * 2.0 - 1.0
+        depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
+        depths = depths.to(opts.device)
 
-        # 使用深度估计器进行深度推断
-        # prompt = self.get_caption(opts, frames[opts.video_length // 2])
-        # import ipdb;ipdb.set_trace()
-        # depths = self.depth_estimater.infer(frames, opts.near, opts.far).to(opts.device)
-        depths = self.depth_estimater.infer(
-            frames,
-            opts.near,
-            opts.far,
-            opts.depth_inference_steps,
-            opts.depth_guidance_scale,
-            window_size=opts.window_size,
-            overlap=opts.overlap,
-        ).to(opts.device)
+        # # 使用深度估计器进行深度推断
+        # # prompt = self.get_caption(opts, frames[opts.video_length // 2])
+        # # import ipdb;ipdb.set_trace()
+        # # depths = self.depth_estimater.infer(frames, opts.near, opts.far).to(opts.device)
+        # depths = self.depth_estimater.infer(
+        #     frames,
+        #     opts.near,
+        #     opts.far,
+        #     opts.depth_inference_steps,
+        #     opts.depth_guidance_scale,
+        #     window_size=opts.window_size,
+        #     overlap=opts.overlap,
+        # ).to(opts.device)
 
-        # 将帧数据转换为适合模型输入的格式
-        frames = (
-            torch.from_numpy(frames).permute(0, 3, 1, 2).to(opts.device) * 2.0 - 1.0
-        )  # 49 576 1024 3 -> 49 3 576 1024, [-1,1]
+        # # 将帧数据转换为适合模型输入的格式
+        # frames = (
+        #     torch.from_numpy(frames).permute(0, 3, 1, 2).to(opts.device) * 2.0 - 1.0
+        # )  # 49 576 1024 3 -> 49 3 576 1024, [-1,1]
 
         if frames.shape[0] != opts.video_length:
             opts.video_length = frames.shape[0]
@@ -77,53 +95,39 @@ class TrajCrafter:
         assert frames.shape[0] == opts.video_length
 
         num_frames = opts.video_length
-        # 获取相机姿态和投影矩阵
-        pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
+        # # 获取相机姿态和投影矩阵
+        # pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
 
         #pose_s 读取原始source video的camera pose
         #pose_t 读取原始target video的camera pose
         # 生成source相机姿态和锚点目标相机姿态
-        path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
+        #正确使用
+        # poses_path = data_dir / "pred_traj.txt"
+        # poses = np.loadtxt(poses_path)
+        # self.T_world_cameras: onp.ndarray = np.array(poses, np.float32)
+        # self.T_world_cameras = np.concatenate(
+        #     [
+        #         # Convert TUM pose to SE3 pose
+        #         Rotation.from_quat(self.T_world_cameras[:, 4:]).as_matrix() if not xyzw
+        #         else Rotation.from_quat(np.concatenate([self.T_world_cameras[:, 5:], self.T_world_cameras[:, 4:5]], -1)).as_matrix(),
+        #         self.T_world_cameras[:, 1:4, None],
+        #     ],
+        #     -1,
+        # )
         intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
         poses = np.loadtxt(path + 'pred_traj.txt')
-#         #In [3]: K[0]
-# Out[3]: 
-# tensor([[[500.,   0., 512.],
-#          [  0., 500., 288.],
-#          [  0.,   0.,   1.]],
-# K.shape
-# Out[4]: torch.Size([49, 3, 3])
-# intrinsic.shape
-# Out[6]: (65, 9)
-# In [8]: intrinsic[0]
-# Out[8]: 
-# array([447.848938,   0.      , 256.      ,   0.      , 447.848938,
-#        144.      ,   0.      ,   0.      ,   1.      ])
         K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
-# In [1]: pose_s.shape
-# Out[1]: torch.Size([49, 4, 4])
-
-# In [2]: pose_t.shape
-# Out[2]: torch.Size([49, 4, 4])
-# In [7]: poses.shape
-# Out[7]: (65, 8)
-# poses[0]
-# Out[24]: 
-# array([ 0.00000000e+00,  4.72544161e-05,  2.78613321e-03, -1.09835267e-02,
-#         9.99909862e-01, -1.10597335e-02,  7.11655142e-04, -7.57922437e-03])
-# 将四元数转换为旋转矩阵
-#poses是四元数，poses[0][0]为idx，poses[0][1:]为四元数，poses[0][1:4]是R四元数,poses[0][4:]是t,需要转换为旋转矩阵
-        R_matrix = quat_to_matrix(poses[:num_frames, 1:5])
-        t = poses[:num_frames, 5:]
-#         #In [47]: torch.from_numpy(R_matrix).float().shape
-# Out[47]: torch.Size([49, 3, 3])
-
-# In [48]: torch.from_numpy(t).float().shape
-# Out[48]: torch.Size([49, 3])
-        scale = 100
-        pose_s = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
-        pose_s[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
-        pose_s[:, :3, 3] = scale*torch.from_numpy(t).float()
+        R_matrix = quat_to_matrix(poses[:num_frames, 1:5]) #num_frames,3,3 
+        t = poses[:num_frames, 5:] #num_frames,3
+        # scale = 2000
+        scale=1
+        pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
+        pose_s_in[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
+        pose_s_in[:, :3, 3] = scale*torch.from_numpy(t).float()
+        # pose_s=torch.linalg.inv(pose_s_inv)
+        #pose_s_in 是 c2w
+        #这边的输入需要的是c2w
+        pose_s=pose_s_in
         pose_t = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
 
         # 初始化用于存储扭曲图像和掩码的列表
