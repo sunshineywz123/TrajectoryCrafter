@@ -47,144 +47,172 @@ class TrajCrafter:
             self.opts = opts
 
     def infer_gradual(self, opts):
-        # 读取视频帧
-        # frames = read_video_frames(
-        #     opts.video_path, opts.video_length, opts.stride, opts.max_res
-        # )
-        # 读取视频帧
-        #frames shape:(65, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -1.0, mean: -0.064824
-        #depths shape:(65, 1, 576, 1024) type:(float32 of torch.Tensor) max: 10000.0, min: 2.5641, mean: 22.025
-        path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
-        #遍历path下的所有图片，转换为tensor
-        frames = []
-        depths = []
-        for i in range(opts.video_length):
-            frames.append(Image.open(path + 'frame_{:04d}.png'.format(i)))
-            depths.append(np.load(path + 'frame_{:04d}.npy'.format(i)))
-        frames = np.array(frames)
-        frames = frames.transpose(0, 3, 1, 2)
-        frames = frames.astype(np.float32) / 255.0
-        # frames = frames.reshape(opts.video_length, 3, 384, 672)
-        frames = torch.from_numpy(frames)
-        frames = frames.to(opts.device) * 2.0 - 1.0
-        depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
-        depths = depths.to(opts.device)
+        if 1:
+            # 读取视频帧
+            # frames = read_video_frames(
+            #     opts.video_path, opts.video_length, opts.stride, opts.max_res
+            # )
+            # 读取视频帧
+            #frames shape:(65, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -1.0, mean: -0.064824
+            #depths shape:(65, 1, 576, 1024) type:(float32 of torch.Tensor) max: 10000.0, min: 2.5641, mean: 22.025
+            path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
+            #遍历path下的所有图片，转换为tensor
+            frames = []
+            depths = []
+            for i in range(opts.video_length):
+                frames.append(Image.open(path + 'frame_{:04d}.png'.format(i)))
+                depths.append(np.load(path + 'frame_{:04d}.npy'.format(i)))
+            frames = np.array(frames)
+            frames = frames.transpose(0, 3, 1, 2)
+            frames = frames.astype(np.float32) / 255.0
+            # frames = frames.reshape(opts.video_length, 3, 384, 672)
+            frames = torch.from_numpy(frames)
+            frames = frames.to(opts.device) * 2.0 - 1.0
+            depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
+            depths = depths.to(opts.device)
 
-        # # 使用深度估计器进行深度推断
-        # # prompt = self.get_caption(opts, frames[opts.video_length // 2])
-        # # import ipdb;ipdb.set_trace()
-        # # depths = self.depth_estimater.infer(frames, opts.near, opts.far).to(opts.device)
-        # depths = self.depth_estimater.infer(
-        #     frames,
-        #     opts.near,
-        #     opts.far,
-        #     opts.depth_inference_steps,
-        #     opts.depth_guidance_scale,
-        #     window_size=opts.window_size,
-        #     overlap=opts.overlap,
-        # ).to(opts.device)
+            # # 使用深度估计器进行深度推断
+            # # prompt = self.get_caption(opts, frames[opts.video_length // 2])
+            # # import ipdb;ipdb.set_trace()
+            # # depths = self.depth_estimater.infer(frames, opts.near, opts.far).to(opts.device)
+            # depths = self.depth_estimater.infer(
+            #     frames,
+            #     opts.near,
+            #     opts.far,
+            #     opts.depth_inference_steps,
+            #     opts.depth_guidance_scale,
+            #     window_size=opts.window_size,
+            #     overlap=opts.overlap,
+            # ).to(opts.device)
 
-        # # 将帧数据转换为适合模型输入的格式
-        # frames = (
-        #     torch.from_numpy(frames).permute(0, 3, 1, 2).to(opts.device) * 2.0 - 1.0
-        # )  # 49 576 1024 3 -> 49 3 576 1024, [-1,1]
+            # # 将帧数据转换为适合模型输入的格式
+            # frames = (
+            #     torch.from_numpy(frames).permute(0, 3, 1, 2).to(opts.device) * 2.0 - 1.0
+            # )  # 49 576 1024 3 -> 49 3 576 1024, [-1,1]
 
-        if frames.shape[0] != opts.video_length:
-            opts.video_length = frames.shape[0]
-        # 断言帧的数量与视频长度一致
-        assert frames.shape[0] == opts.video_length
+            if frames.shape[0] != opts.video_length:
+                opts.video_length = frames.shape[0]
+            # 断言帧的数量与视频长度一致
+            assert frames.shape[0] == opts.video_length
 
-        num_frames = opts.video_length
-        # # 获取相机姿态和投影矩阵
-        # pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
+            num_frames = opts.video_length
+            # # 获取相机姿态和投影矩阵
+            # pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
 
-        #pose_s 读取原始source video的camera pose
-        #pose_t 读取原始target video的camera pose
-        # 生成source相机姿态和锚点目标相机姿态
-        #正确使用
-        # poses_path = data_dir / "pred_traj.txt"
-        # poses = np.loadtxt(poses_path)
-        # self.T_world_cameras: onp.ndarray = np.array(poses, np.float32)
-        # self.T_world_cameras = np.concatenate(
-        #     [
-        #         # Convert TUM pose to SE3 pose
-        #         Rotation.from_quat(self.T_world_cameras[:, 4:]).as_matrix() if not xyzw
-        #         else Rotation.from_quat(np.concatenate([self.T_world_cameras[:, 5:], self.T_world_cameras[:, 4:5]], -1)).as_matrix(),
-        #         self.T_world_cameras[:, 1:4, None],
-        #     ],
-        #     -1,
-        # )
-        intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
-        poses = np.loadtxt(path + 'pred_traj.txt')
-        K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
-        R_matrix = quat_to_matrix(poses[:num_frames, 1:5]) #num_frames,3,3 
-        t = poses[:num_frames, 5:] #num_frames,3
-        # scale = 2000
-        scale=1
-        pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
-        pose_s_in[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
-        pose_s_in[:, :3, 3] = scale*torch.from_numpy(t).float()
-        # pose_s=torch.linalg.inv(pose_s_inv)
-        #pose_s_in 是 c2w
-        #这边的输入需要的是c2w
-        pose_s=pose_s_in
-        pose_t = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
+            #pose_s 读取原始source video的camera pose
+            #pose_t 读取原始target video的camera pose
+            # 生成source相机姿态和锚点目标相机姿态
+            #正确使用
+            # poses_path = data_dir / "pred_traj.txt"
+            # poses = np.loadtxt(poses_path)
+            # self.T_world_cameras: onp.ndarray = np.array(poses, np.float32)
+            # self.T_world_cameras = np.concatenate(
+            #     [
+            #         # Convert TUM pose to SE3 pose
+            #         Rotation.from_quat(self.T_world_cameras[:, 4:]).as_matrix() if not xyzw
+            #         else Rotation.from_quat(np.concatenate([self.T_world_cameras[:, 5:], self.T_world_cameras[:, 4:5]], -1)).as_matrix(),
+            #         self.T_world_cameras[:, 1:4, None],
+            #     ],
+            #     -1,
+            # )
+            intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
+            poses = np.loadtxt(path + 'pred_traj.txt')
+            K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
+            R_matrix = quat_to_matrix(np.concatenate([poses[:num_frames, 5:], poses[:num_frames, 4:5]], -1)) #num_frames,3,3 
+            t = poses[:num_frames, 1:4] #num_frames,3
+            # scale = 2000
+            scale=1
+            pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
+            pose_s_in[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
+            pose_s_in[:, :3, 3] = scale*torch.from_numpy(t).float()
+            # pose_s=torch.linalg.inv(pose_s_inv)
+            #pose_s_in 是 c2w
+            #这边的输入需要的是c2w
+            pose_s=pose_s_in
+            pose_t = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
 
-        # 初始化用于存储扭曲图像和掩码的列表
-        warped_images = []
-        masks = []
+            # 初始化用于存储扭曲图像和掩码的列表
+            warped_images = []
+            masks = []
 
-        # 遍历每一帧，进行扭曲处理
-        for i in tqdm(range(opts.video_length)):
-            warped_frame2, mask2, warped_depth2, flow12 = self.funwarp.forward_warp(
-                frames[i : i + 1],
-                None,
-                depths[i : i + 1],
-                pose_s[i : i + 1],
-                pose_t[i : i + 1],
-                K[i : i + 1],
-                None,
-                opts.mask,
-                twice=False,
+            # 遍历每一帧，进行扭曲处理
+            for i in tqdm(range(opts.video_length)):
+                warped_frame2, mask2, warped_depth2, flow12 = self.funwarp.forward_warp(
+                    frames[i : i + 1],
+                    None,
+                    depths[i : i + 1],
+                    pose_s[i : i + 1],
+                    pose_t[i : i + 1],
+                    K[i : i + 1],
+                    None,
+                    opts.mask,
+                    twice=False,
+                    load_pcd=True,
+                )
+                warped_images.append(warped_frame2)
+                masks.append(mask2)
+
+            # 将扭曲图像和掩码转换为适合保存的格式
+            cond_video = (torch.cat(warped_images) + 1.0) / 2.0
+            cond_masks = torch.cat(masks)
+
+            # 调整帧、扭曲视频和掩码的大小
+            frames = F.interpolate(
+                frames, size=opts.sample_size, mode='bilinear', align_corners=False
             )
-            warped_images.append(warped_frame2)
-            masks.append(mask2)
+            cond_video = F.interpolate(
+                cond_video, size=opts.sample_size, mode='bilinear', align_corners=False
+            )
+            cond_masks = F.interpolate(cond_masks, size=opts.sample_size, mode='nearest')
 
-        # 将扭曲图像和掩码转换为适合保存的格式
-        cond_video = (torch.cat(warped_images) + 1.0) / 2.0
-        cond_masks = torch.cat(masks)
-
-        # 调整帧、扭曲视频和掩码的大小
-        frames = F.interpolate(
-            frames, size=opts.sample_size, mode='bilinear', align_corners=False
-        )
-        cond_video = F.interpolate(
-            cond_video, size=opts.sample_size, mode='bilinear', align_corners=False
-        )
-        cond_masks = F.interpolate(cond_masks, size=opts.sample_size, mode='nearest')
-
-        # 保存原始帧、扭曲视频和掩码为视频文件
-        save_video(
-            (frames.permute(0, 2, 3, 1) + 1.0) / 2.0,
-            os.path.join(opts.save_dir, 'input.mp4'),
-            fps=opts.fps,
-        )
-        save_video(
-            cond_video.permute(0, 2, 3, 1),
-            os.path.join(opts.save_dir, 'render.mp4'),
-            fps=opts.fps,
-        )
-        save_video(
-            cond_masks.repeat(1, 3, 1, 1).permute(0, 2, 3, 1),
-            os.path.join(opts.save_dir, 'mask.mp4'),
-            fps=opts.fps,
-        )
+            # 保存原始帧、扭曲视频和掩码为视频文件
+            save_video(
+                (frames.permute(0, 2, 3, 1) + 1.0) / 2.0,
+                os.path.join(opts.save_dir, 'input.mp4'),
+                fps=opts.fps,
+            )
+            save_video(
+                cond_video.permute(0, 2, 3, 1),
+                os.path.join(opts.save_dir, 'render.mp4'),
+                fps=opts.fps,
+            )
+            save_video(
+                cond_masks.repeat(1, 3, 1, 1).permute(0, 2, 3, 1),
+                os.path.join(opts.save_dir, 'mask.mp4'),
+                fps=opts.fps,
+            )
 
         # assert(0)
-        import ipdb;ipdb.set_trace()
+        # import ipdb;ipdb.set_trace()
         
-        assert(0)
+        # assert(0)
     
+        # save_path = opts.save_dir
+        save_path = 'experiments/p7/'
+        #从input.mp4 render.mp4 mask.mp4 还原 frames cond_video cond_masks
+        #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329
+        vid = VideoReader(os.path.join(save_path, 'input.mp4'), ctx=cpu(0))
+        frames_idx = list(range(0, len(vid), 1))
+        original_frames=vid.get_batch(frames_idx).asnumpy().astype("float32") / 255.0
+        #original_frames shape:(49, 384, 672, 3) type:(float32 of numpy.ndarray) max: 1.0, min: 0.054902, mean: 0.44257
+        frames=torch.from_numpy(original_frames).permute(0,3,1,2).to(opts.device)*2.0-1.0
+
+        cond_vid = VideoReader(os.path.join(save_path, 'render.mp4'), ctx=cpu(0))
+        cond_frames_idx = list(range(0, len(cond_vid), 1))
+        original_cond_frames=cond_vid.get_batch(cond_frames_idx).asnumpy().astype("float32") / 255.0
+        cond_video = torch.from_numpy(original_cond_frames).permute(0,3,1,2).to(opts.device)
+
+        cond_masks_vid = VideoReader(os.path.join(save_path, 'mask.mp4'), ctx=cpu(0))
+        cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
+        original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
+        cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
+
+        #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329  [-1,1]
+        #  prompt_frame 49 384 672 3 [0,1] numpy
+        mid_indx = min(opts.video_length // 2,20)
+
+        prompt_frame = (frames.permute(0,2,3,1)[mid_indx].cpu().numpy()+1)/2.0
+        prompt = self.get_caption(opts, prompt_frame)
         # 调试断点
         frames = (frames.permute(1, 0, 2, 3).unsqueeze(0) + 1.0) / 2.0
         frames_ref = frames[:, :, :10, :, :]
@@ -214,7 +242,7 @@ class TrajCrafter:
                 guidance_scale=opts.diffusion_guidance_scale,
                 num_inference_steps=opts.diffusion_inference_steps,
                 video=cond_video,
-                mask_video=cond_masks,
+                mask_video=cond_masks[:,0,:,:,:],
                 reference=frames_ref,
             ).videos
 
@@ -401,7 +429,8 @@ class TrajCrafter:
                 K[0:1],
                 None,
                 opts.mask,
-                twice=True,
+                twice=False,
+                load_pcd=False,
             )
             warped_images.append(warped_frame2)
             masks.append(mask2)
