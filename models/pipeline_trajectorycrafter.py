@@ -780,14 +780,17 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
+        # 检查帧数是否超过49（由于静态位置编码限制）
         if num_frames > 49:
             raise ValueError(
                 "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
             )
 
+        # 如果回调函数是PipelineCallback或MultiPipelineCallbacks类型，获取其张量输入
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        # 设置高度和宽度，如果没有指定则使用默认值
         height = (
             height
             or self.transformer.config.sample_size * self.vae_scale_factor_spatial
@@ -795,9 +798,10 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
         width = (
             width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         )
+        # 每个提示生成的视频数量设为1
         num_videos_per_prompt = 1
 
-        # 1. Check inputs. Raise error if not correct
+        # 1. 检查输入参数是否正确
         self.check_inputs(
             prompt,
             height,
@@ -807,10 +811,12 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
             prompt_embeds,
             negative_prompt_embeds,
         )
+        # 设置引导比例和中断标志
         self._guidance_scale = guidance_scale
         self._interrupt = False
 
-        # 2. Default call parameters
+        # 2. 设置默认调用参数
+        # 根据prompt类型确定batch_size
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -818,14 +824,16 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # 获取执行设备
         device = self._execution_device
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
+        # 设置是否进行无分类器引导（guidance_scale > 1.0时启用）
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
+        # 3. 编码输入提示
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             negative_prompt,
@@ -836,27 +844,34 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
+        # 如果需要无分类器引导，拼接正负提示嵌入
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
-        # 4. set timesteps
+        # 4. 设置时间步
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        # 获取时间步和实际推理步数
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps=num_inference_steps, strength=strength, device=device
         )
+        # 记录总时间步数
         self._num_timesteps = len(timesteps)
+        # 如果使用ComfyUI进度条，初始化进度条
         if comfyui_progressbar:
             from comfy.utils import ProgressBar
-
             pbar = ProgressBar(num_inference_steps + 2)
         # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
+        # 设置初始噪声的时间步（如果strength为0.5则为50%）
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
+        # 检查strength是否为1.0（纯噪声初始化）
         is_strength_max = strength == 1.0
 
-        # 5. Prepare latents.
+        # 5. 准备潜在变量
+        # 处理输入视频
         if video is not None:
             video_length = video.shape[2]
+            # 预处理视频并重新排列维度
             init_video = self.image_processor.preprocess(
                 rearrange(video, "b c f h w -> (b f) c h w"), height=height, width=width
             )
@@ -867,34 +882,44 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
         else:
             init_video = None
 
+        # 处理参考视频
         ref_length = reference.shape[2]
         ref_video = self.image_processor.preprocess(
             rearrange(reference, "b c f h w -> (b f) c h w"), height=height, width=width
         )
         ref_video = rearrange(ref_video, "(b f) c h w -> b c f h w", f=ref_length)
-        bs = 1
+        bs = 1  # 批处理大小设为1
         ref_video = ref_video.to(device=device, dtype=self.vae.dtype)
         new_ref_video = []
+        # 分批处理参考视频
         for i in range(0, ref_video.shape[0], bs):
             video_bs = ref_video[i : i + bs]
             video_bs = self.vae.encode(video_bs)[0]
             video_bs = video_bs.sample()
             new_ref_video.append(video_bs)
+        # 拼接所有批次的参考视频
         new_ref_video = torch.cat(new_ref_video, dim=0)
+        # 缩放潜在变量
         new_ref_video = new_ref_video * self.vae.config.scaling_factor
+        # 重复参考潜在变量以匹配batch_size
         ref_latents = new_ref_video.repeat(
             batch_size // new_ref_video.shape[0], 1, 1, 1, 1
         )
         ref_latents = ref_latents.to(device=self.device, dtype=self.dtype)
+        # 重新排列维度顺序
         ref_latents = rearrange(ref_latents, "b c f h w -> b f c h w")
+        # 如果需要无分类器引导，拼接参考潜在变量
         ref_input = (
             torch.cat([ref_latents] * 2) if do_classifier_free_guidance else ref_latents
         )
 
+        # 获取VAE和Transformer的通道数
         num_channels_latents = self.vae.config.latent_channels
         num_channels_transformer = self.transformer.config.in_channels
+        # 检查是否需要返回图像潜在变量
         return_image_latents = num_channels_transformer == num_channels_latents
 
+        # 准备潜在变量
         latents_outputs = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -911,15 +936,19 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
             return_noise=True,
             return_video_latents=return_image_latents,
         )
+        # 根据返回类型解包潜在变量
         if return_image_latents:
             latents, noise, image_latents = latents_outputs
         else:
             latents, noise = latents_outputs
+        # 更新进度条
         if comfyui_progressbar:
             pbar.update(1)
         # [1, 3, 49, 384, 672] to [1, 13, 16, 48, 84]
         if mask_video is not None:
+            # 如果遮罩全为255（完全遮罩）
             if (mask_video == 255).all():
+                # 创建全零的遮罩潜在变量
                 mask_latents = torch.zeros_like(latents)[:, :, :1].to(
                     latents.device, latents.dtype
                 )
@@ -927,22 +956,26 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                     latents.device, latents.dtype
                 )
 
+                # 如果需要无分类器引导，拼接遮罩输入
                 mask_input = (
                     torch.cat([mask_latents] * 2)
                     if do_classifier_free_guidance
                     else mask_latents
                 )
+                # 如果需要无分类器引导，拼接遮罩视频潜在变量
                 masked_video_latents_input = (
                     torch.cat([masked_video_latents] * 2)
                     if do_classifier_free_guidance
                     else masked_video_latents
                 )
+                # 拼接遮罩输入和遮罩视频潜在变量
                 inpaint_latents = torch.cat(
                     [mask_input, masked_video_latents_input], dim=2
                 ).to(latents.dtype)
             else:
-                # Prepare mask latent variables
+                # 准备遮罩潜在变量
                 video_length = video.shape[2]
+                # 预处理遮罩视频
                 mask_condition = self.mask_processor.preprocess(
                     rearrange(mask_video, "b c f h w -> (b f) c h w"),
                     height=height,
@@ -952,11 +985,14 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                 mask_condition = rearrange(
                     mask_condition, "(b f) c h w -> b c f h w", f=video_length
                 )
-                # [0,1]
+                
+                # 如果Transformer通道数与潜在变量通道数不同
                 if num_channels_transformer != num_channels_latents:
+                    # 平铺遮罩条件
                     mask_condition_tile = torch.tile(mask_condition, [1, 3, 1, 1, 1])
+                    # 如果没有提供遮罩视频潜在变量，创建新的
                     if masked_video_latents is None:
-                        # 在 mask_condition_tile 小于 0.5(即0,首帧) 的位置，masked_video 保留 init_video 的值；在 mask_condition_tile 大于 0.5（即1） 的位置，masked_video 的值被设置为 -1
+                        # 在遮罩条件<0.5的位置保留原始视频，>0.5的位置设为-1
                         masked_video = (
                             init_video * (mask_condition_tile < 0.5)
                             + torch.ones_like(init_video)
@@ -966,6 +1002,7 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                     else:
                         masked_video = masked_video_latents
 
+                    # 准备遮罩潜在变量
                     _, masked_video_latents = self.prepare_mask_latents(
                         None,
                         masked_video,
@@ -978,17 +1015,19 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                         do_classifier_free_guidance,
                         noise_aug_strength=noise_aug_strength,
                     )
-                    # mask at latent size, 1 is valid,第一帧变成1,后面变成0
+                    # 调整遮罩大小，1表示有效区域（第一帧变为1，后面变为0）
                     mask_latents = resize_mask(1 - mask_condition, masked_video_latents)
-                    # 缩放1的数值
+                    # 缩放遮罩值
                     mask_latents = (
                         mask_latents.to(masked_video_latents.device)
                         * self.vae.config.scaling_factor
                     )
 
+                    # 平铺遮罩到潜在变量通道数
                     mask = torch.tile(
                         mask_condition, [1, num_channels_latents, 1, 1, 1]
                     )
+                    # 三线性插值调整遮罩大小
                     mask = F.interpolate(
                         mask,
                         size=latents.size()[-3:],
@@ -996,7 +1035,7 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                         align_corners=True,
                     ).to(latents.device, latents.dtype)
 
-                    # input is with cfg guidance
+                    # 准备无分类器引导的输入
                     mask_input = (
                         torch.cat([mask_latents] * 2)
                         if do_classifier_free_guidance
@@ -1008,25 +1047,29 @@ class TrajCrafter_Pipeline(DiffusionPipeline):
                         else masked_video_latents
                     )
 
+                    # 重新排列维度顺序
                     mask = rearrange(mask, "b c f h w -> b f c h w")
                     mask_input = rearrange(mask_input, "b c f h w -> b f c h w")
                     masked_video_latents_input = rearrange(
                         masked_video_latents_input, "b c f h w -> b f c h w"
                     )
-                    # channel cat
+                    # 通道拼接
                     inpaint_latents = torch.cat(
                         [mask_input, masked_video_latents_input], dim=2
                     ).to(latents.dtype)
                 else:
+                    # 平铺遮罩到潜在变量通道数
                     mask = torch.tile(
                         mask_condition, [1, num_channels_latents, 1, 1, 1]
                     )
+                    # 三线性插值调整遮罩大小
                     mask = F.interpolate(
                         mask,
                         size=latents.size()[-3:],
                         mode='trilinear',
                         align_corners=True,
                     ).to(latents.device, latents.dtype)
+                    # 重新排列维度顺序
                     mask = rearrange(mask, "b c f h w -> b f c h w")
 
                     inpaint_latents = None

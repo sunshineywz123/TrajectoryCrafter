@@ -251,6 +251,7 @@ class Warper:
         intrinsic2: Optional[torch.Tensor],
         mask=False,
         twice=False,
+        load_pcd=False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Given a frame1 and global transformations transformation1 and transformation2, warps frame1 to next view using
@@ -295,9 +296,20 @@ class Warper:
             depth1, transformation1, transformation2, intrinsic1, intrinsic2,frame=(frame1+1)/2
         ) # (b, h, w, 3, 1)
         global idx
-        pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/unstable_04/scene_pointcloud_{}.ply'.format(idx))
-        pcd_points = np.asarray(pcd.points)
-        trans_points1 = torch.matmul(intrinsic2,torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1))
+        if load_pcd:
+            pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/rollerblade/scene_pointcloud_{}.ply'.format(idx))
+            pcd_points = np.asarray(pcd.points)
+            trans_points1=torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1)
+            #trans_points1 = torch.matmul(intrinsic2,torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1))
+        #rgb 是frame1
+            ones_4d = torch.ones(size=(b,h,w,1,1)).to(self.device).to(self.dtype)
+            # 转换为齐次坐标
+            trans_points1_homo = torch.cat([trans_points1, ones_4d], dim=3)  # (b, h, w, 4, 1)
+            trans_4d = transformation2
+            # 应用变换矩阵
+            trans_world_homo = torch.matmul(trans_4d, trans_points1_homo)  
+            trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
+            trans_points1 = torch.matmul(intrinsic2,trans_world)
         #rgb 是frame1
         #trans_points1 是frame1的3D点坐标
         #生成带颜色的点云

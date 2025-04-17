@@ -88,7 +88,7 @@ def calculate_camera_transformation(enlarged_masks_center, image_center, K):
         rotation_matrix = calculate_rotation_matrix(A_camera, B_camera)
         
         # 6. 将 A 点变换到相机图像中心
-        A_transformed = transform_point(A_camera, rotation_matrix)
+        A_transformed = transform_point(A_camera, np.linalg.inv(rotation_matrix))
         #获取经过内参K变换后的A点
         A_transformed_camera = np.dot(K_i, A_transformed)
         A_transformed_camera=A_transformed_camera[:2]/A_transformed_camera[2]
@@ -124,6 +124,6 @@ if __name__ == "__main__":
     print("第一个样本的旋转矩阵:\n", rotation_matrices[0])
     print("enlarged_masks_center:\n", enlarged_masks_center[0])
     print("image_center:\n", image_center[0])
-    print("第一个样本变换后的 A 点 transformed_points:\n", transformed_points[0])
+    print("第一个样本变换后的 A 点:\n", transformed_points[0])
     print("第一个样本变换后2d的 A 点 transformed_points_camera:\n", transformed_points_camera[0])
     print(f"总共处理了 {len(rotation_matrices)} 个样本")

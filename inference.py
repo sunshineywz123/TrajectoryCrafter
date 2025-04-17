@@ -5,7 +5,8 @@ from datetime import datetime
 import argparse
 import torch
 import ptvsd
-
+import sys
+import ipdb
 def get_parser():
     """
     创建并返回一个解析命令行参数的 ArgumentParser 对象。
@@ -188,7 +189,7 @@ if __name__ == "__main__":
     opts = parser.parse_args()
     
             
-    ptvsd.enable_attach(address=('0.0.0.0', 5691))
+    ptvsd.enable_attach(address=('0.0.0.0', 5692))
     
     opts.weight_dtype = torch.bfloat16
     if opts.exp_name == None:
@@ -202,9 +203,21 @@ if __name__ == "__main__":
     opts.save_dir = os.path.join(opts.out_dir, opts.exp_name)
     os.makedirs(opts.save_dir, exist_ok=True)
     pvd = TrajCrafter(opts)
-    if opts.mode == 'gradual':
-        pvd.infer_gradual(opts)
-    elif opts.mode == 'direct':
-        pvd.infer_direct(opts)
-    elif opts.mode == 'bullet':
-        pvd.infer_bullet(opts)
+    if 1:
+        if opts.mode == 'gradual':
+            pvd.infer_gradual(opts)
+        elif opts.mode == 'direct':
+            pvd.infer_direct(opts)
+        elif opts.mode == 'bullet':
+            pvd.infer_bullet(opts)
+    else:
+        try:
+            if opts.mode == 'gradual':
+                pvd.infer_gradual(opts)
+            elif opts.mode == 'direct':
+                pvd.infer_direct(opts)
+            elif opts.mode == 'bullet':
+                pvd.infer_bullet(opts)
+        except:
+            type, value, traceback = sys.exc_info()
+            ipdb.post_mortem(traceback)
