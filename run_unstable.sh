@@ -57,8 +57,21 @@ python -m ptvsd --host 127.0.0.1 --port 5692 inference.py \
     --mask \
     --target_pose 0 -30 0.3 0 0 \
     --traj_txt 'test/trajs/loop2.txt' \
-    --video_length 35
+    --video_length 35 \
+    --sample_size 512 384
 
+# python inference.py \
+#     --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \
+#     --stride 2 \
+#     --out_dir experiments \
+#     --radius_scale 1 \
+#     --camera 'target' \
+#     --mode 'gradual' \
+#     --mask \
+#     --target_pose 0 -30 0.3 0 0 \
+#     --traj_txt 'test/trajs/loop2.txt' \
+#     --video_length 35 \
+#     --sample_size 512 384
 
 # python inference.py \
 #     --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \

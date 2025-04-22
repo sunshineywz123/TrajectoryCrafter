@@ -27,7 +27,8 @@ import torch.nn.functional as F
 from decord import VideoReader, cpu
 import open3d as o3d
 idx=0
-
+world_points_idx=0
+trans_world_idx=0
 def tensor_to_point_cloud(tensor,colors=None, filename="point_cloud.ply"):
     """
     将 PyTorch 张量转换为 Open3D 点云并保存为 PLY 文件。
@@ -297,7 +298,7 @@ class Warper:
         ) # (b, h, w, 3, 1)
         global idx
         if load_pcd:
-            pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/rollerblade/scene_pointcloud_{}.ply'.format(idx))
+            pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/airport/scene_pointcloud_{}.ply'.format(idx))
             pcd_points = np.asarray(pcd.points)
             trans_points1=torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1)
             #trans_points1 = torch.matmul(intrinsic2,torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1))
@@ -305,7 +306,10 @@ class Warper:
             ones_4d = torch.ones(size=(b,h,w,1,1)).to(self.device).to(self.dtype)
             # 转换为齐次坐标
             trans_points1_homo = torch.cat([trans_points1, ones_4d], dim=3)  # (b, h, w, 4, 1)
-            trans_4d = transformation2
+            # trans_4d = transformation2
+            trans_4d = torch.bmm(
+                transformation2, torch.linalg.inv(transformation1)
+            )  # (b, 4, 4)  
             # 应用变换矩阵
             trans_world_homo = torch.matmul(trans_4d, trans_points1_homo)  
             trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
@@ -435,9 +439,9 @@ class Warper:
         # 计算世界坐标系中的点
         #world_points的含义camera 0的坐标系下的坐标
         world_points = depth_4d * unnormalized_pos  # (b, h, w, 3, 1)
-        global idx
-        # tensor_to_point_cloud(world_points.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/world_points_{:04d}.ply'.format(idx))
-        # idx+=1
+        # global world_points_idx
+        # tensor_to_point_cloud(world_points.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/world_points_{:04d}.ply'.format(world_points_idx))
+        # world_points_idx+=1
         # 转换为齐次坐标
         world_points_homo = torch.cat([world_points, ones_4d], dim=3)  # (b, h, w, 4, 1)
         # 应用变换矩阵
@@ -445,9 +449,10 @@ class Warper:
         # 提取变换后的3D坐标
         #trans_world的含义camera 1的坐标系下的坐标
         trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
-        # global idx
-        # tensor_to_point_cloud(trans_world.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/trans_world_points_{:04d}.ply'.format(idx))
-        # idx+=1
+        # global trans_world_idx
+        
+        # tensor_to_point_cloud(trans_world.reshape(-1,3),colors=frame.permute(0,2,3,1).reshape(-1,3),filename='tmp3/trans_world_points_{:04d}.ply'.format(trans_world_idx))
+        # trans_world_idx+=1
         # 计算变换后的归一化坐标
         trans_norm_points = torch.matmul(intrinsic2_4d, trans_world)  # (b, h, w, 3, 1)
         return trans_norm_points

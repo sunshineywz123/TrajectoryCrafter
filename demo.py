@@ -24,7 +24,7 @@ from models.utils import *
 from pointcloud_processing import process_point_cloud
 import cv2
 
-
+from rotation_interpolation import slerp_rotation_matrix
 # 四元数格式 [x,y,z,w]
 # quat = [0.707, 0, 0.707, 0]
 def quat_to_matrix(quat):
@@ -56,9 +56,6 @@ class TrajCrafter:
             #     opts.video_path, opts.video_length, opts.stride, opts.max_res
             # )
             # 读取视频帧
-            #frames shape:(65, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -1.0, mean: -0.064824
-            #depths shape:(65, 1, 576, 1024) type:(float32 of torch.Tensor) max: 10000.0, min: 2.5641, mean: 22.025
-            # path='/nas/users/yuanweizhong/monst3r/my_data/unstable_4/'
             path='/nas/users/yuanweizhong/monst3r/my_data/airport/'
             #读取mask enlarged_dynamic_mask_0.png 
             #遍历path下的所有图片，转换为tensor
@@ -72,7 +69,6 @@ class TrajCrafter:
             original_frames = np.array(frames)
             frames = original_frames.transpose(0, 3, 1, 2)
             frames = frames.astype(np.float32) / 255.0
-            # frames = frames.reshape(opts.video_length, 3, 384, 672)
             frames = torch.from_numpy(frames)
             frames = frames.to(opts.device) * 2.0 - 1.0
             depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
@@ -130,66 +126,33 @@ class TrajCrafter:
             K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
             R_matrix = quat_to_matrix(np.concatenate([poses[:num_frames, 5:], poses[:num_frames, 4:5]], -1)) #num_frames,3,3 
             t = poses[:num_frames, 1:4] #num_frames,3
-            # scale = 2000
             scale=1
             pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
-            pose_s_in[:, :3, :3] = scale*torch.from_numpy(R_matrix).float()
-            pose_s_in[:, :3, 3] = scale*torch.from_numpy(t).float()
-            # pose_s=torch.linalg.inv(pose_s_inv)
+            R_start=torch.from_numpy(R_matrix).float()[0]
+            R_end=torch.from_numpy(R_matrix).float()[-1]
+
+            
+            R_interp=slerp_rotation_matrix(R_start, R_end, num_frames-1)
+            pose_s_in[:, :3, :3] = scale*torch.from_numpy(np.array(R_interp)).float()
+            # Linear interpolation for translation between first and last frame
+            t_start = torch.from_numpy(t).float()[0]
+            t_end = torch.from_numpy(t).float()[-1]
+            t_interp = torch.stack([
+                torch.linspace(t_start[i], t_end[i], num_frames) 
+                for i in range(3)
+            ], dim=1)
+            pose_s_in[:, :3, 3] = scale * t_interp
             #pose_s_in 是 c2w
-
-            pose_s, pose_t = ai_follow(enlarged_masks, original_frames, K, pose_s_in, opts, num_frames)
-# #             In [24]: boxx.tree(K)
-# # └── /: (35, 3, 3) of torch.DoubleTensor @ cpu
-
-# # In [25]: boxx.tree(enlarged_masks)
-# # └── /: (35, 1, 288, 512) of torch.cuda.ByteTensor @ cuda:0
-
-# # In [26]: boxx.tree(depths)
-# # └── /: (35, 1, 288, 512) of torch.cuda.FloatTensor @ cuda:0
-#             # 计算 mask 的中心点
-#             enlarged_masks_center = calculate_mask_center(enlarged_masks)
-            
-#             # 将列表转换为 numpy 数组，以便可以使用 shape 属性
-#             enlarged_masks_center_array = np.array(enlarged_masks_center)
-# #             #boxx.tree(enlarged_masks_center_array)
-# # └── /: (35, 2)int64
-# # In [11]: boxx.tree(enlarged_masks)
-# # └── /: (35, 1, 288, 512) of torch.cuda.ByteTensor @ cuda:0
-# # boxx.tree(original_frames)
-# # └── /: (35, 288, 512, 3)uint8
-#             # 在 enlarged_masks 上画出中心点
-#             for i in range(len(enlarged_masks_center)):
-#                 cv2.circle(
-#                     original_frames[i],  # 直接使用帧，不需要 [0] 索引
-#                     (enlarged_masks_center[i][0], enlarged_masks_center[i][1]), 
-#                     5, 
-#                     (0, 0, 255),  # BGR 格式的红色
-#                     -1
-#                 )
-            
-#                 # 保存图像 - 不需要 squeeze 和 cpu 转换，因为 original_frames 已经是 numpy 数组
-#                 # 创建一个可视化用的图像
-#                 cv2.imwrite('debug/enlarged_masks_{:d}.png'.format(i), original_frames[i])  # 只保存第一帧作为示例
-            
-#             # 继续使用 numpy 数组形式的 enlarged_masks_center
-#             enlarged_masks_center = enlarged_masks_center_array
-#             # 计算图像的中心点
-#             image_center = calculate_image_center(enlarged_masks)
-#             image_center = np.array(image_center)
-#             # 计算相机变换矩阵,返回旋转矩阵和变换后的点坐标
-#             rotation_matrix, A_transformed, A_transformed_camera = calculate_camera_transformation(enlarged_masks_center, image_center, K)
-#             # 将输入的相机姿态赋值给pose_s
-#             pose_s = pose_s_in
-#             # 将A_transformed从列表转换为numpy数组,形状为(35,3)
-#             A_transformed_array = np.array(A_transformed)  
-#             # 将rotation_matrix从列表转换为numpy数组
-#             rotation_matrix = np.array(rotation_matrix)
-
-#             pose_s_trans = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1).clone()
-#             pose_t = pose_s_trans.clone()
-#             pose_t[:,:3,:3] = torch.from_numpy(np.linalg.inv(rotation_matrix)).float()
-
+            ai_follow_flag=False
+            if ai_follow_flag:
+                pose_s, pose_t = ai_follow(enlarged_masks, original_frames, K, pose_s_in, opts, num_frames)
+            else:
+                # 设置源相机姿态
+                # pose_s = pose_s_in[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
+                # pose_t =pose_s_in[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
+                pose_s = pose_s_in
+                pose_t = torch.eye(4).to(pose_s_in.device).to(pose_s_in.dtype).repeat(num_frames,1,1)
+                
             if 0:
                 # 创建4x4的单位矩阵并复制num_frames份
                 transfor_matrix=torch.eye(4).repeat(num_frames,1,1)
@@ -201,19 +164,11 @@ class TrajCrafter:
                 pose_s_trans =transfor_matrix@ (pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1))
                 # pose_t[:,:,:] =pose_s_trans[:,:,:]
 
-    # RuntimeError: The expanded size of the tensor (4) must match the existing size (3) at non-singleton dimension 1.  Target sizes: [35, 4, 4].  Tensor sizes: [35, 3, 4]
                 pose_t=pose_s_trans
 
 
             #pose_t = torch.linalg.inv(transfor_matrix)@ (pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1))
-            if 0:
-                centers = process_point_cloud(depths, K, enlarged_masks)
-                # to cpu
-                centers = centers.cpu().float()
-                pose_s_in = pose_s_in.cpu()
-                adjusted_poses = orient_camera_to_centers(centers, pose_s_in)
-                pose_s = pose_s_in
-                pose_t=adjusted_poses
+
             #这边的输入需要的是c2w
             # pose_s=pose_s_in
             # pose_t = pose_s[opts.anchor_idx : opts.anchor_idx + 1].repeat(num_frames, 1, 1)
@@ -294,8 +249,6 @@ class TrajCrafter:
         original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
         cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
 
-        #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329  [-1,1]
-        #  prompt_frame 49 384 672 3 [0,1] numpy
         mid_indx = min(opts.video_length // 2,24)
 
         prompt_frame = (frames.permute(0,2,3,1)[mid_indx].cpu().numpy()+1)/2.0
