@@ -49,85 +49,58 @@ class TrajCrafter:
         if gradio:
             self.opts = opts
 
+    def get_monst3r_dataset(self, opts, path):
+        """Load MONST3R dataset from given path.
+        
+        Args:
+            opts: Options object containing configuration
+            path: Path to dataset directory
+            
+        Returns:
+            tuple: (frames, depths, enlarged_masks, K, R_matrix, t)
+        """
+        frames = []
+        depths = []
+        enlarged_masks = []
+        for i in range(opts.video_length):
+            frames.append(Image.open(path + 'frame_{:04d}.png'.format(i)))
+            depths.append(np.load(path + 'frame_{:04d}.npy'.format(i)))
+            enlarged_masks.append(Image.open(path + 'enlarged_dynamic_mask_{:d}.png'.format(i)))
+        
+        original_frames = np.array(frames)
+        frames = original_frames.transpose(0, 3, 1, 2)
+        frames = frames.astype(np.float32) / 255.0
+        frames = torch.from_numpy(frames)
+        frames = frames.to(opts.device) * 2.0 - 1.0
+        
+        depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
+        depths = depths.to(opts.device)
+        
+        enlarged_masks = torch.from_numpy(np.array(enlarged_masks))
+        enlarged_masks = enlarged_masks.to(opts.device).unsqueeze(1)
+
+        if frames.shape[0] != opts.video_length:
+            opts.video_length = frames.shape[0]
+        assert frames.shape[0] == opts.video_length
+
+        num_frames = opts.video_length
+        intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
+        poses = np.loadtxt(path + 'pred_traj.txt')
+        K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
+        R_matrix = quat_to_matrix(np.concatenate([poses[:num_frames, 5:], poses[:num_frames, 4:5]], -1))
+        t = poses[:num_frames, 1:4]
+        
+        return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
+
     def infer_gradual(self, opts):
         if 1:
-            # 读取视频帧
-            # frames = read_video_frames(
-            #     opts.video_path, opts.video_length, opts.stride, opts.max_res
-            # )
-            # 读取视频帧
-            path='/nas/users/yuanweizhong/monst3r/my_data/airport/'
-            #读取mask enlarged_dynamic_mask_0.png 
-            #遍历path下的所有图片，转换为tensor
-            frames = []
-            depths = []
-            enlarged_masks=[]
-            for i in range(opts.video_length):
-                frames.append(Image.open(path + 'frame_{:04d}.png'.format(i)))
-                depths.append(np.load(path + 'frame_{:04d}.npy'.format(i)))
-                enlarged_masks.append(Image.open(path + 'enlarged_dynamic_mask_{:d}.png'.format(i)))
-            original_frames = np.array(frames)
-            frames = original_frames.transpose(0, 3, 1, 2)
-            frames = frames.astype(np.float32) / 255.0
-            frames = torch.from_numpy(frames)
-            frames = frames.to(opts.device) * 2.0 - 1.0
-            depths = torch.from_numpy(np.array(depths).reshape(opts.video_length, 1, depths[0].shape[0], depths[0].shape[1]))
-            depths = depths.to(opts.device)
-            enlarged_masks = torch.from_numpy(np.array(enlarged_masks))
-            enlarged_masks = enlarged_masks.to(opts.device).unsqueeze(1)
-
+            path = '/nas/users/yuanweizhong/monst3r/my_data/airport/'
+            original_frames,frames, depths, K, R_matrix, t,enlarged_masks = self.get_monst3r_dataset(opts, path)
             
-            # # 使用深度估计器进行深度推断
-            # # prompt = self.get_caption(opts, frames[opts.video_length // 2])
-            # # import ipdb;ipdb.set_trace()
-            # # depths = self.depth_estimater.infer(frames, opts.near, opts.far).to(opts.device)
-            # depths = self.depth_estimater.infer(
-            #     frames,
-            #     opts.near,
-            #     opts.far,
-            #     opts.depth_inference_steps,
-            #     opts.depth_guidance_scale,
-            #     window_size=opts.window_size,
-            #     overlap=opts.overlap,
-            # ).to(opts.device)
-
-            # # 将帧数据转换为适合模型输入的格式
-            # frames = (
-            #     torch.from_numpy(frames).permute(0, 3, 1, 2).to(opts.device) * 2.0 - 1.0
-            # )  # 49 576 1024 3 -> 49 3 576 1024, [-1,1]
-
-            if frames.shape[0] != opts.video_length:
-                opts.video_length = frames.shape[0]
-            # 断言帧的数量与视频长度一致
-            assert frames.shape[0] == opts.video_length
-
-            num_frames = opts.video_length
-            # # 获取相机姿态和投影矩阵
-            # pose_s, pose_t, K = self.get_poses(opts, depths, num_frames=num_frames)
-
-            #pose_s 读取原始source video的camera pose
-            #pose_t 读取原始target video的camera pose
-            # 生成source相机姿态和锚点目标相机姿态
-            #正确使用
-            # poses_path = data_dir / "pred_traj.txt"
-            # poses = np.loadtxt(poses_path)
-            # self.T_world_cameras: onp.ndarray = np.array(poses, np.float32)
-            # self.T_world_cameras = np.concatenate(
-            #     [
-            #         # Convert TUM pose to SE3 pose
-            #         Rotation.from_quat(self.T_world_cameras[:, 4:]).as_matrix() if not xyzw
-            #         else Rotation.from_quat(np.concatenate([self.T_world_cameras[:, 5:], self.T_world_cameras[:, 4:5]], -1)).as_matrix(),
-            #         self.T_world_cameras[:, 1:4, None],
-            #     ],
-            #     -1,
-            # )
-            intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')
-            poses = np.loadtxt(path + 'pred_traj.txt')
-            K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
-            R_matrix = quat_to_matrix(np.concatenate([poses[:num_frames, 5:], poses[:num_frames, 4:5]], -1)) #num_frames,3,3 
-            t = poses[:num_frames, 1:4] #num_frames,3
-            scale=1
+            scale = 1
+            num_frames=opts.video_length
             pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
+
             R_start=torch.from_numpy(R_matrix).float()[0]
             R_end=torch.from_numpy(R_matrix).float()[-1]
 
