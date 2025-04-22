@@ -253,6 +253,7 @@ class Warper:
         mask=False,
         twice=False,
         load_pcd=False,
+        pcd_path=None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Given a frame1 and global transformations transformation1 and transformation2, warps frame1 to next view using
@@ -278,7 +279,7 @@ class Warper:
 
         assert frame1.shape == (b, 3, h, w)
         assert mask1.shape == (b, 1, h, w)
-        assert depth1.shape == (b, 1, h, w)
+        
         assert transformation1.shape == (b, 4, 4)
         assert transformation2.shape == (b, 4, 4)
         assert intrinsic1.shape == (b, 3, 3)
@@ -286,19 +287,20 @@ class Warper:
 
         frame1 = frame1.to(self.device).to(self.dtype)
         mask1 = mask1.to(self.device).to(self.dtype)
-        depth1 = depth1.to(self.device).to(self.dtype)
+        if len(depth1)!=0:
+            assert depth1.shape == (b, 1, h, w)
+            depth1 = depth1.to(self.device).to(self.dtype)
         transformation1 = transformation1.to(self.device).to(self.dtype)
         transformation2 = transformation2.to(self.device).to(self.dtype)
         intrinsic1 = intrinsic1.to(self.device).to(self.dtype)
         intrinsic2 = intrinsic2.to(self.device).to(self.dtype)
 
         # 计算变换后的3D点坐标
-        trans_points1 = self.compute_transformed_points(
-            depth1, transformation1, transformation2, intrinsic1, intrinsic2,frame=(frame1+1)/2
-        ) # (b, h, w, 3, 1)
+
         global idx
         if load_pcd:
-            pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/airport/scene_pointcloud_{}.ply'.format(idx))
+            # pcd = o3d.io.read_point_cloud('/nas/users/yuanweizhong/monst3r/my_data/airport/scene_pointcloud_{}.ply'.format(idx))
+            pcd = o3d.io.read_point_cloud(pcd_path)
             pcd_points = np.asarray(pcd.points)
             trans_points1=torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1)
             #trans_points1 = torch.matmul(intrinsic2,torch.from_numpy(pcd_points).to(self.device).to(self.dtype).reshape(b,h,w,3,1))
@@ -314,6 +316,10 @@ class Warper:
             trans_world_homo = torch.matmul(trans_4d, trans_points1_homo)  
             trans_world = trans_world_homo[:, :, :, :3]  # (b, h, w, 3, 1)
             trans_points1 = torch.matmul(intrinsic2,trans_world)
+        else:
+            trans_points1 = self.compute_transformed_points(
+                depth1, transformation1, transformation2, intrinsic1, intrinsic2,frame=(frame1+1)/2
+            ) # (b, h, w, 3, 1)
         #rgb 是frame1
         #trans_points1 是frame1的3D点坐标
         #生成带颜色的点云

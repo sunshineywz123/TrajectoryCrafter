@@ -139,7 +139,11 @@ class TrajCrafter:
         return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
     def infer_gradual(self, opts):
         if 1:
-            path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
+            if opts.in_server:
+                path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
+            else:
+                path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
+            path='./gugong/'
             output_path = 'experiments/'+path.split('/')[-1]
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
