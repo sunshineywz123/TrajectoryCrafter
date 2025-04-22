@@ -271,7 +271,7 @@ class TrajCrafter:
             # cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
             # original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
             # cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
-
+            frames = interpolated_frames 
             mid_indx = min(opts.video_length // 2,24)
 
             prompt_frame = (frames.permute(0,2,3,1)[mid_indx].cpu().numpy()+1)/2.0
