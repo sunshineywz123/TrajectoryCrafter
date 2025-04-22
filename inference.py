@@ -21,6 +21,9 @@ def get_parser():
     parser = argparse.ArgumentParser()
 
     ## general
+    parser.add_argument('--in_server', type=bool, default=False, help='In server mode')
+    parser.add_argument('--start_frame', type=int, default=0, help='Start frame')
+    parser.add_argument('--debug', type=bool, default=False, help='Debug mode')
     parser.add_argument('--video_path', type=str, help='Input path')
     parser.add_argument(
         '--out_dir', type=str, default='./experiments1/', help='Output dir'
@@ -188,8 +191,9 @@ if __name__ == "__main__":
     parser = get_parser()  # infer config.py
     opts = parser.parse_args()
     
+    if opts.debug:
             
-    # ptvsd.enable_attach(address=('0.0.0.0', 5692))
+        ptvsd.enable_attach(address=('0.0.0.0', 5692))
     
     opts.weight_dtype = torch.bfloat16
     if opts.exp_name == None:
