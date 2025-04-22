@@ -189,7 +189,7 @@ if __name__ == "__main__":
     opts = parser.parse_args()
     
             
-    ptvsd.enable_attach(address=('0.0.0.0', 5692))
+    # ptvsd.enable_attach(address=('0.0.0.0', 5692))
     
     opts.weight_dtype = torch.bfloat16
     if opts.exp_name == None:

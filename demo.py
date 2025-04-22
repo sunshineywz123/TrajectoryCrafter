@@ -91,12 +91,58 @@ class TrajCrafter:
         t = poses[:num_frames, 1:4]
         
         return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
+    def get_vggt_dataset(self, opts, path,start_frame):
+        """Load MONST3R dataset from given path.
+        
+        Args:
+            opts: Options object containing configuration
+            path: Path to dataset directory
+            start_frame: Start frame index
+        Returns:
+            tuple: (frames, depths, enlarged_masks, K, R_matrix, t)
+        """
+        frames = []
+        depths = []
+        enlarged_masks = []
+        num_frames = opts.video_length
+        intrinsic = np.loadtxt(path + 'pred_intrinsics.txt')[start_frame:start_frame+num_frames, :]
+        poses = np.loadtxt(path + 'pred_traj.txt')[start_frame:start_frame+num_frames, :]
+        for i in range(num_frames):
+            frames.append(Image.open(path + 'crop_images/frame_{:06d}.jpg'.format(i+start_frame)))
+            enlarged_masks.append(Image.open(path + 'images_sky_masks/frame_{:06d}.jpg'.format(i+start_frame)))
+        
+        original_frames = np.array(frames)
+        frames = original_frames.transpose(0, 3, 1, 2)
+        frames = frames.astype(np.float32) / 255.0
+        frames = torch.from_numpy(frames)
+        frames = frames.to(opts.device) * 2.0 - 1.0
+        
 
+        
+        enlarged_masks = torch.from_numpy(np.array(enlarged_masks))
+        enlarged_masks = enlarged_masks.to(opts.device).unsqueeze(1)
+
+        if frames.shape[0] != opts.video_length:
+            opts.video_length = frames.shape[0]
+        assert frames.shape[0] == opts.video_length
+
+
+        K = torch.from_numpy(intrinsic[:num_frames, :]).reshape(num_frames, 3, 3)
+        # R_matrix = quat_to_matrix(np.concatenate([poses[:num_frames, 5:], poses[:num_frames, 4:5]], -1))
+        # t = poses[:num_frames, 1:4]
+        extrinsics_cam = poses[:num_frames,:].reshape(-1,3,4)
+        extrinsics_cam_homo = np.concatenate([extrinsics_cam,np.zeros((extrinsics_cam.shape[0],1,4))],axis=1)
+        extrinsics_cam_homo[:,-1,3] = 1.0
+        c2w_matrix = np.linalg.inv(extrinsics_cam_homo)
+        R_matrix = c2w_matrix[:,:3,:3]
+        t = c2w_matrix[:,:3,3]
+        return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
     def infer_gradual(self, opts):
         if 1:
-            path = '/nas/users/yuanweizhong/monst3r/my_data/airport/'
-            original_frames,frames, depths, K, R_matrix, t,enlarged_masks = self.get_monst3r_dataset(opts, path)
-            
+            path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
+            # original_frames,frames, depths, K, R_matrix, t,enlarged_masks = self.get_monst3r_dataset(opts, path)
+            start_frame = 0
+            original_frames,frames, depths, K, R_matrix, t,enlarged_masks = self.get_vggt_dataset(opts, path,start_frame)
             scale = 1
             num_frames=opts.video_length
             pose_s_in = torch.from_numpy(np.eye(4).astype(np.float32)).repeat(num_frames, 1, 1)
