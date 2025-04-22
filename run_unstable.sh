@@ -53,22 +53,6 @@ if [ $debug = true ]; then
     python -m ptvsd --host 127.0.0.1 --port 5692 inference.py \
         --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \
         --stride 2 \
-    --out_dir experiments \
-    --radius_scale 1 \
-    --camera 'target' \
-    --mode 'gradual' \
-    --mask \
-    --target_pose 0 -30 0.3 0 0 \
-    --traj_txt 'test/trajs/loop2.txt' \
-    --video_length 49 \
-    --sample_size 512 512\
-    --debug \
-    --start_frame 49 \
-    --in_server $in_server
-else    
-    python inference.py \
-        --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \
-        --stride 2 \
         --out_dir experiments \
         --radius_scale 1 \
         --camera 'target' \
@@ -77,9 +61,28 @@ else
         --target_pose 0 -30 0.3 0 0 \
         --traj_txt 'test/trajs/loop2.txt' \
         --video_length 49 \
-        --sample_size 512 512 \
+        --sample_size 512 512\
+        --debug \
         --start_frame 49 \
         --in_server $in_server
+else    
+    for i in {0..150..49}
+    do
+        python inference.py \
+            --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \
+            --stride 2 \
+            --out_dir experiments \
+            --radius_scale 1 \
+            --camera 'target' \
+            --mode 'gradual' \
+            --mask \
+            --target_pose 0 -30 0.3 0 0 \
+            --traj_txt 'test/trajs/loop2.txt' \
+            --video_length 49 \
+            --sample_size 512 512 \
+            --start_frame $i \
+            --in_server $in_server
+    done
 fi
 # python inference.py \
 #     --video_path '/nas/datasets/DAVIS/JPEGImages/1080p/rollerblade.mp4' \

@@ -139,11 +139,7 @@ class TrajCrafter:
         return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
     def infer_gradual(self, opts):
         if 1:
-            if opts.in_server:
-                path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
-            else:
-                path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
-            path='./gugong/'
+            path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
             output_path = 'experiments/'+path.split('/')[-1]
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
@@ -256,25 +252,25 @@ class TrajCrafter:
     
     
         if opts.in_server:
-            # save_path = opts.save_dir
-            save_path = 'experiments/p7/'
-            #从input.mp4 render.mp4 mask.mp4 还原 frames cond_video cond_masks
-            #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329
-            vid = VideoReader(os.path.join(save_path, 'start_frame_{}_input.mp4'.format(start_frame)), ctx=cpu(0))
-            frames_idx = list(range(0, len(vid), 1))
-            original_frames=vid.get_batch(frames_idx).asnumpy().astype("float32") / 255.0
-            #original_frames shape:(49, 384, 672, 3) type:(float32 of numpy.ndarray) max: 1.0, min: 0.054902, mean: 0.44257
-            frames=torch.from_numpy(original_frames).permute(0,3,1,2).to(opts.device)*2.0-1.0
+            # # save_path = opts.save_dir
+            # save_path = 'experiments/p7/'
+            # #从input.mp4 render.mp4 mask.mp4 还原 frames cond_video cond_masks
+            # #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329
+            # vid = VideoReader(os.path.join(save_path, 'start_frame_{}_input.mp4'.format(start_frame)), ctx=cpu(0))
+            # frames_idx = list(range(0, len(vid), 1))
+            # original_frames=vid.get_batch(frames_idx).asnumpy().astype("float32") / 255.0
+            # #original_frames shape:(49, 384, 672, 3) type:(float32 of numpy.ndarray) max: 1.0, min: 0.054902, mean: 0.44257
+            # frames=torch.from_numpy(original_frames).permute(0,3,1,2).to(opts.device)*2.0-1.0
 
-            cond_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_render.mp4'.format(start_frame)), ctx=cpu(0))
-            cond_frames_idx = list(range(0, len(cond_vid), 1))
-            original_cond_frames=cond_vid.get_batch(cond_frames_idx).asnumpy().astype("float32") / 255.0
-            cond_video = torch.from_numpy(original_cond_frames).permute(0,3,1,2).to(opts.device)
+            # cond_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_render.mp4'.format(start_frame)), ctx=cpu(0))
+            # cond_frames_idx = list(range(0, len(cond_vid), 1))
+            # original_cond_frames=cond_vid.get_batch(cond_frames_idx).asnumpy().astype("float32") / 255.0
+            # cond_video = torch.from_numpy(original_cond_frames).permute(0,3,1,2).to(opts.device)
 
-            cond_masks_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_mask.mp4'.format(start_frame)), ctx=cpu(0))
-            cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
-            original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
-            cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
+            # cond_masks_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_mask.mp4'.format(start_frame)), ctx=cpu(0))
+            # cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
+            # original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
+            # cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
 
             mid_indx = min(opts.video_length // 2,24)
 
