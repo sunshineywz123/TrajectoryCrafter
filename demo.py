@@ -139,7 +139,7 @@ class TrajCrafter:
         return original_frames,frames, depths, K, R_matrix, t,enlarged_masks
     def infer_gradual(self, opts):
         if 1:
-            path = '/nas/users/yuanweizhong/TrajectoryCrafter/gugong/'
+            path = './gugong/'
             output_path = 'experiments/'+path.split('/')[-1]
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
@@ -248,88 +248,89 @@ class TrajCrafter:
                 os.path.join(output_path, 'start_frame_{:04d}_mask.mp4'.format(start_frame)),
                 fps=opts.fps,
             )
-
+            # import ipdb;ipdb.set_trace()
     
     
-        if opts.in_server:
-            # # save_path = opts.save_dir
-            # save_path = 'experiments/p7/'
-            # #从input.mp4 render.mp4 mask.mp4 还原 frames cond_video cond_masks
-            # #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329
-            # vid = VideoReader(os.path.join(save_path, 'start_frame_{}_input.mp4'.format(start_frame)), ctx=cpu(0))
-            # frames_idx = list(range(0, len(vid), 1))
-            # original_frames=vid.get_batch(frames_idx).asnumpy().astype("float32") / 255.0
-            # #original_frames shape:(49, 384, 672, 3) type:(float32 of numpy.ndarray) max: 1.0, min: 0.054902, mean: 0.44257
-            # frames=torch.from_numpy(original_frames).permute(0,3,1,2).to(opts.device)*2.0-1.0
+        # if opts.in_server:
+        #     # save_path = opts.save_dir
+        #     save_path = 'experiments/p7/'
+        #     #从input.mp4 render.mp4 mask.mp4 还原 frames cond_video cond_masks
+        #     #frames shape:(49, 3, 384, 672) type:(float32 of torch.Tensor) max: 1.0, min: -0.87829, mean: -0.10329
+        #     vid = VideoReader(os.path.join(save_path, 'start_frame_{}_input.mp4'.format(start_frame)), ctx=cpu(0))
+        #     frames_idx = list(range(0, len(vid), 1))
+        #     original_frames=vid.get_batch(frames_idx).asnumpy().astype("float32") / 255.0
+        #     #original_frames shape:(49, 384, 672, 3) type:(float32 of numpy.ndarray) max: 1.0, min: 0.054902, mean: 0.44257
+        #     frames=torch.from_numpy(original_frames).permute(0,3,1,2).to(opts.device)*2.0-1.0
 
-            # cond_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_render.mp4'.format(start_frame)), ctx=cpu(0))
-            # cond_frames_idx = list(range(0, len(cond_vid), 1))
-            # original_cond_frames=cond_vid.get_batch(cond_frames_idx).asnumpy().astype("float32") / 255.0
-            # cond_video = torch.from_numpy(original_cond_frames).permute(0,3,1,2).to(opts.device)
+        #     cond_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_render.mp4'.format(start_frame)), ctx=cpu(0))
+        #     cond_frames_idx = list(range(0, len(cond_vid), 1))
+        #     original_cond_frames=cond_vid.get_batch(cond_frames_idx).asnumpy().astype("float32") / 255.0
+        #     cond_video = torch.from_numpy(original_cond_frames).permute(0,3,1,2).to(opts.device)
 
-            # cond_masks_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_mask.mp4'.format(start_frame)), ctx=cpu(0))
-            # cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
-            # original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
-            # cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
-            frames = interpolated_frames 
-            mid_indx = min(opts.video_length // 2,24)
+        #     cond_masks_vid = VideoReader(os.path.join(save_path, 'start_frame_{}_mask.mp4'.format(start_frame)), ctx=cpu(0))
+        #     cond_masks_frames_idx = list(range(0, len(cond_masks_vid), 1))
+        #     original_cond_masks_frames=cond_masks_vid.get_batch(cond_masks_frames_idx).asnumpy().astype("float32") / 255.0
+        #     cond_masks = torch.from_numpy(original_cond_masks_frames).permute(0,3,1,2).to(opts.device)[:,:1,:,:]
 
-            prompt_frame = (frames.permute(0,2,3,1)[mid_indx].cpu().numpy()+1)/2.0
-            prompt = self.get_caption(opts, prompt_frame)
-            # 调试断点
-            frames = (frames.permute(1, 0, 2, 3).unsqueeze(0) + 1.0) / 2.0
-            frames_ref = frames[:, :, :10, :, :]
-            cond_video = cond_video.permute(1, 0, 2, 3).unsqueeze(0)
-            cond_masks = (1.0 - cond_masks.permute(1, 0, 2, 3).unsqueeze(0)) * 255.0
+        frames = interpolated_frames 
+        mid_indx = min(opts.video_length // 2,24)
 
-            # 创建随机数生成器
-            generator = torch.Generator(device=opts.device).manual_seed(opts.seed)
+        prompt_frame = (frames.permute(0,2,3,1)[mid_indx].cpu().numpy()+1)/2.0
+        prompt = self.get_caption(opts, prompt_frame)
+        # 调试断点
+        frames = (frames.permute(1, 0, 2, 3).unsqueeze(0) + 1.0) / 2.0
+        frames_ref = frames[:, :, :10, :, :]
+        cond_video = cond_video.permute(1, 0, 2, 3).unsqueeze(0)
+        cond_masks = (1.0 - cond_masks.permute(1, 0, 2, 3).unsqueeze(0)) * 255.0
 
-            # 释放不再需要的资源
-            del self.depth_estimater
-            del self.caption_processor
-            del self.captioner
-            gc.collect()
-            torch.cuda.empty_cache()
+        # 创建随机数生成器
+        generator = torch.Generator(device=opts.device).manual_seed(opts.seed)
 
-            # 在不计算梯度的情况下进行生成
-            with torch.no_grad():
-                # 使用管道进行生成
-                sample = self.pipeline(
-                    prompt,
-                    num_frames=opts.video_length,
-                    negative_prompt=opts.negative_prompt,
-                    height=opts.sample_size[0],
-                    width=opts.sample_size[1],
-                    generator=generator,
-                    guidance_scale=opts.diffusion_guidance_scale,
-                    num_inference_steps=opts.diffusion_inference_steps,
-                    video=cond_video,
-                    mask_video=cond_masks[:,0,:,:,:],
-                    reference=frames_ref,
-                ).videos
+        # 释放不再需要的资源
+        del self.depth_estimater
+        del self.caption_processor
+        del self.captioner
+        gc.collect()
+        torch.cuda.empty_cache()
 
-            # 保存生成的视频
+        # 在不计算梯度的情况下进行生成
+        with torch.no_grad():
+            # 使用管道进行生成
+            sample = self.pipeline(
+                prompt,
+                num_frames=opts.video_length,
+                negative_prompt=opts.negative_prompt,
+                height=opts.sample_size[0],
+                width=opts.sample_size[1],
+                generator=generator,
+                guidance_scale=opts.diffusion_guidance_scale,
+                num_inference_steps=opts.diffusion_inference_steps,
+                video=cond_video,
+                mask_video=cond_masks,
+                reference=frames_ref,
+            ).videos
+
+        # 保存生成的视频
+        save_video(
+            sample[0].permute(1, 2, 3, 0),
+            os.path.join(output_path, 'start_frame_{:04d}_gen.mp4'.format(start_frame)),
+            fps=opts.fps,
+        )
+
+        # 可视化选项
+        viz = False
+        if viz:
+            tensor_left = frames[0].to(opts.device)
+            tensor_right = sample[0].to(opts.device)
+            interval = torch.ones(3, 49, 384, 30).to(opts.device)
+            result = torch.cat((tensor_left, interval, tensor_right), dim=3)
+            result_reverse = torch.flip(result, dims=[1])
+            final_result = torch.cat((result, result_reverse[:, 1:, :, :]), dim=1)
             save_video(
-                sample[0].permute(1, 2, 3, 0),
-                os.path.join(output_path, 'start_frame_{:04d}_gen.mp4'.format(start_frame)),
-                fps=opts.fps,
+                final_result.permute(1, 2, 3, 0),
+                os.path.join(opts.save_dir, 'viz.mp4'),
+                fps=opts.fps * 2,
             )
-
-            # 可视化选项
-            viz = False
-            if viz:
-                tensor_left = frames[0].to(opts.device)
-                tensor_right = sample[0].to(opts.device)
-                interval = torch.ones(3, 49, 384, 30).to(opts.device)
-                result = torch.cat((tensor_left, interval, tensor_right), dim=3)
-                result_reverse = torch.flip(result, dims=[1])
-                final_result = torch.cat((result, result_reverse[:, 1:, :, :]), dim=1)
-                save_video(
-                    final_result.permute(1, 2, 3, 0),
-                    os.path.join(opts.save_dir, 'viz.mp4'),
-                    fps=opts.fps * 2,
-                )
 
     def infer_direct(self, opts):
         opts.cut = 20
